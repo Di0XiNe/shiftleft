@@ -49,16 +49,23 @@ jobs:
           ignore-unfixed: true
 
       # 2. 🧾 Generar SBOM y Escanear (Syft + Grype)
-      - name: 🧾 Generar SBOM y Escanear (Syft & Grype)
+      # 🟢 CORRECCIÓ 2: Generar SBOM (Syft) - Paso separado
+      - name: 🧾 Generate SBOM (Syft)
         if: success()
         run: |
           echo "Generando SBOM con Syft..."
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
           anchore/syft:latest "${{ env.IMAGE_TAG_SHA }}" -o syft-json > sbom.syft.json
+          test -s sbom.syft.json || { echo "Error: SBOM file was not created by Syft." && exit 1; }
 
+      # 🟢 CORRECCIÓ 3: Escanejar SBOM (Grype) - Paso separado con path corregido
+      - name: 🛡 Vulnerability scan (Grype on SBOM)
+        if: success()
+        run: |
           echo "Escaneando SBOM con Grype..."
           docker run --rm \
           -v "$PWD":/work \
+          # CORRECCIÓN: Leemos el archivo desde el path montado: /work/sbom.syft.json
           anchore/grype:latest sbom:./sbom.syft.json \
           --fail-on high \
           --only-fixed=false
