@@ -12,3 +12,4 @@ CMD echo "Hola! Aquesta és una imatge de prova per a GitHub Actions + Trivy." &
 # Forzar ejecucion de Actions 221750
 # Nuevo cambio forzado para activar el commit del SBOM 223050
 # Forzar ejecucion de Actions 20251129223852
+# Forzar ejecucion de Actions 20251129224529
