@@ -11,3 +11,4 @@ RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 CMD echo "⚠️ Imatge de prova amb vulnerabilitats (per a Trivy)" && apache2 -v && openssl version
+# Dummy change to force Action execution
