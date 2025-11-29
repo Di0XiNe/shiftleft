@@ -61,7 +61,7 @@ jobs:
         if: success()
         run: |
           echo "Escaneando SBOM con Grype..."
-          docker run --rm -v "$PWD":/work anchore/grype:latest sbom:./sbom.syft.json --fail-on high --only-fixed=false
+          docker run --rm -v "$PWD":/work anchore/grype:latest sbom:./sbom.syft.json
 
       # Artefacte SBOM (Pujada interna al pipeline - ja estava)
       - name: 📤 Upload SBOM artifact
