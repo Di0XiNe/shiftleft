@@ -10,3 +10,4 @@ RUN apk add --no-cache curl
 # Defineix un script d'entrada directament dins el Dockerfile
 CMD echo "Hola! Aquesta és una imatge de prova per a GitHub Actions + Trivy." && curl --version
 # Forzar ejecucion de Actions 221750
+# Nuevo cambio forzado para activar el commit del SBOM 223050

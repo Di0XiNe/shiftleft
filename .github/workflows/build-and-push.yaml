@@ -9,24 +9,24 @@ on:
 
 env:
   # 1. Definimos solo la variable estática aquí
-  IMAGE_REPO: quay.io/harik_sc/shift_left 
+  IMAGE_REPO: quay.io/harik_sc/shift_left
 
 jobs:
   build-scan-push:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
-      packages: write
+      contents: write # Permís necessari per fer commit i push de l'SBOM
+      packages: write # Permís necessari per al push a Quay
 
     steps:
       - name: 🧩 Checkout code
         uses: actions/checkout@v4
 
-      # 🟢 PAS DE CORRECCIÓ: Define las variables dinámicas y las exporta a GITHUB_ENV
+      # ⚙️ CORRECCIÓN: Definimos variables dinámicas y las exportamos a GITHUB_ENV
       - name: ⚙️ Set Dynamic Image Tags
         run: |
-          # Exportamos tags dinámicos utilizando la sintaxis de shell válida para GITHUB_ENV
+          # Exportamos tags dinámicos
           echo "IMAGE_TAG_SHA=${{ env.IMAGE_REPO }}:${{ github.sha }}" >> $GITHUB_ENV
           echo "LATEST_IMAGE_TAG=${{ env.IMAGE_REPO }}:latest" >> $GITHUB_ENV
           echo "Tags dinámicos establecidos."
@@ -35,7 +35,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: 🔧 Construir la imagen del contenedor
-        # 3. Utilizamos las variables exportadas
         run: |
           docker build -t ${{ env.IMAGE_TAG_SHA }} -t ${{ env.LATEST_IMAGE_TAG }} .
 
@@ -48,8 +47,7 @@ jobs:
           exit-code: 1
           ignore-unfixed: true
 
-      # 2. 🧾 Generar SBOM y Escanear (Syft + Grype)
-      # 🟢 CORRECCIÓ 2: Generar SBOM (Syft) - Paso separado
+      # 2. 🧾 Generar SBOM (Syft) - Paso separado para garantizar la escritura
       - name: 🧾 Generate SBOM (Syft)
         if: success()
         run: |
@@ -58,19 +56,14 @@ jobs:
           anchore/syft:latest "${{ env.IMAGE_TAG_SHA }}" -o syft-json > sbom.syft.json
           test -s sbom.syft.json || { echo "Error: SBOM file was not created by Syft." && exit 1; }
 
-      # 🟢 CORRECCIÓ 3: Escanejar SBOM (Grype) - Paso separado con path corregido
+      # 3. 🛡 Escanejar SBOM (Grype)
       - name: 🛡 Vulnerability scan (Grype on SBOM)
         if: success()
         run: |
           echo "Escaneando SBOM con Grype..."
-          docker run --rm \
-          -v "$PWD":/work \
-          # CORRECCIÓN: Leemos el archivo desde el path montado: /work/sbom.syft.json
-          anchore/grype:latest sbom:./sbom.syft.json \
-          --fail-on high \
-          --only-fixed=false
+          docker run --rm -v "$PWD":/work anchore/grype:latest sbom:./sbom.syft.json --fail-on high --only-fixed=false
 
-      # Artefacte SBOM
+      # Artefacte SBOM (Pujada interna al pipeline - ja estava)
       - name: 📤 Upload SBOM artifact
         if: success()
         uses: actions/upload-artifact@v4
@@ -80,7 +73,24 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # 3. 🔑 Login Seguro
+      # 🟢 EXTRA: Commit i Push de l'SBOM a la branca main
+      - name: 💾 Commit SBOM to Git Repository
+        if: success()
+        run: |
+          echo "Subiendo sbom.syft.json al repo de Git para trazabilidad..."
+          # Configura l'usuari/bot que fa el commit
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Afegeix l'SBOM i fa commit. '|| true' evita que el workflow falli si no hi ha canvis.
+          git add sbom.syft.json
+          git commit -m "chore(sbom): Afegir SBOM per al commit ${{ github.sha }}" || echo "No new SBOM file to commit."
+
+          # Puja el commit a la branca main
+          # Utilitzem el GITHUB_TOKEN per autenticació
+          git push
+
+      # 4. 🔑 Login Seguro (utilizando la acción)
       - name: 🔑 Login to Quay.io (Acción Segura)
         if: success()
         uses: docker/login-action@v3
@@ -89,7 +99,7 @@ jobs:
           username: ${{ secrets.QUAY_USER }}
           password: ${{ secrets.QUAY_PASSWORD }}
 
-      # 4. 🚀 Push Condicional
+      # 5. 🚀 Push Condicional
       - name: 🚀 Push image to Quay.io
         if: success()
         run: |
