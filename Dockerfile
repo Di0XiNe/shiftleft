@@ -8,5 +8,5 @@ LABEL org.opencontainers.image.licenses="MIT"
 RUN apk add --no-cache curl
 
 # Defineix un script d'entrada directament dins el Dockerfile
-CMD echo "Hola! Aquesta és una imatge de prova per a GitHub Actions + Trivy." && curl --version
+CMD echo "Hola! y no funciona Aquesta és una imatge de prova per a GitHub Actions + Trivy." && curl --version
 # Ultimo intento de activacion
