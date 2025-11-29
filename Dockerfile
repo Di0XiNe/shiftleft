@@ -1,6 +1,6 @@
 FROM alpine:3.20
 
-# Metadades útils testo
+# Metadades útils
 LABEL org.opencontainers.image.description="Imatge bàsica per provar GitHub Actions + Trivy"
 LABEL org.opencontainers.image.licenses="MIT"
 
