@@ -57,11 +57,16 @@ jobs:
           test -s sbom.syft.json || { echo "Error: SBOM file was not created by Syft." && exit 1; }
 
       # 3. 🛡 Escanejar SBOM (Grype)
-      - name: 🛡 Vulnerability scan (Grype on SBOM)
+      # Reemplaza el 'docker run' problemático de Grype
+      - name: 🛡 Vulnerability scan (Grype Action on SBOM)
         if: success()
-        run: |
-          echo "Escaneando SBOM con Grype..."
-          docker run --rm -v "$PWD":/work anchore/grype:latest sbom:./sbom.syft.json
+        uses: anchore/scan-action@v6
+        with:
+          # Grype Action lee directamente el archivo generado en el paso anterior
+          sbom: sbom.syft.json
+          severity-cutoff: high # Falla si detecta HIGH o CRITICAL
+          fail-build: true
+          only-fixed: false
 
       # Artefacte SBOM (Pujada interna al pipeline - ja estava)
       - name: 📤 Upload SBOM artifact
