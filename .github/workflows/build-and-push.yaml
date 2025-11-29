@@ -1,64 +1,79 @@
-name: Build and Push to Quay
+name: Build, Scan, Push, and SBOM Generation
 
 on:
   push:
     branches:
       - main
+    paths:
+      - 'Dockerfile' # El workflow se ejecuta solo si se modifica el Dockerfile
 
 env:
-  FULL_IMAGE: quay.io/harik_sc/shift_left
+  # Repositorio de Quay.io corregido al espacio del usuario
+  IMAGE_REPO: quay.io/harik_sc/shift_left
+  # Tags dinámicos
+  IMAGE_TAG_SHA: ${{ env.IMAGE_REPO }}:${{ github.sha }}
+  LATEST_IMAGE_TAG: ${{ env.IMAGE_REPO }}:latest 
 
 jobs:
   build-scan-push:
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write # Para artefactos (SBOM)
+      packages: write # Para el push a Quay
 
     steps:
       - name: 🧩 Checkout code
         uses: actions/checkout@v4
 
-      - name: 🔧 Build container image
-        run: |
-          docker build -t $FULL_IMAGE .
+      - name: 🛠️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: 🔍 Scan image with Trivy
+      - name: 🔧 Construir la imagen del contenedor
+        run: |
+          # Construimos la imagen y le asignamos dos tags: SHA y 'latest'
+          docker build -t ${{ env.IMAGE_TAG_SHA }} -t ${{ env.LATEST_IMAGE_TAG }} .
+
+      # 1. 🔍 Escaneo Rápido (Trivy) - Falla si hay HIGH/CRITICAL
+      # Si falla, detiene todo el proceso.
+      - name: 🔍 Scan image with Trivy (Falla si hay HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.FULL_IMAGE }}
-          severity: HIGH,CRITICAL
-          exit-code: 1
+          image-ref: ${{ env.IMAGE_TAG_SHA }}
+          severity: HIGH,CRITICAL 
+          exit-code: 1 
           ignore-unfixed: true
 
-      # 🧾 Generate SBOM with Syft (syft-json format)
-      - name: 🧾 Generate SBOM (Syft)
+      # 2. 🧾 Generar SBOM y Escanear (Syft + Grype) - Solo si Trivy ha pasado
+      - name: 🧾 Generar SBOM y Escanear (Syft & Grype)
+        if: success()
         run: |
-          docker run --rm \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v "$PWD":/work \
-          anchore/syft:latest "$FULL_IMAGE" -o syft-json > sbom.syft.json
-          test -s sbom.syft.json && echo "SBOM created: sbom.syft.json"
+          echo "Generando SBOM con Syft..."
+          # Generar SBOM con Syft
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          anchore/syft:latest "${{ env.IMAGE_TAG_SHA }}" -o syft-json > sbom.syft.json
 
-      - name: 📤 Upload SBOM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-syft-json
-          path: sbom.syft.json
-          if-no-files-found: error
-          retention-days: 14
-
-      # 🛡 Evaluate SBOM with Grype (fail build on HIGH or CRITICAL vulns)
-      - name: 🛡 Vulnerability scan (Grype on SBOM)
-        run: |
+          echo "Escaneando SBOM con Grype..."
+          # Escanear SBOM con Grype y fallar si hay HIGH
           docker run --rm \
           -v "$PWD":/work \
-          anchore/grype:latest /work/sbom.syft.json \
+          anchore/grype:latest sbom:./sbom.syft.json \
           --fail-on high \
-          --only-fixed=false \
-          --add-cpes-if-none
+          --only-fixed=false
 
-      - name: 🔑 Login to Quay.io
-        run: |
-          docker login quay.io -u "${{ secrets.QUAY_USER }}" -p "${{ secrets.QUAY_PASSWORD }}"
+      # 3. 🔑 Login Seguro (Solo si todos los escaneos han pasado)
+      - name: 🔑 Login to Quay.io (Acción Segura)
+        if: success()
+        # CORRECCIÓN: Se utiliza la acción de login segura
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USER }}
+          password: ${{ secrets.QUAY_PASSWORD }}
 
+      # 4. 🚀 Push Final (Solo si todos los escaneos han pasado)
       - name: 🚀 Push image to Quay.io
+        if: success()
         run: |
-          docker push $FULL_IMAGE
+          docker push ${{ env.IMAGE_TAG_SHA }}
+          docker push ${{ env.LATEST_IMAGE_TAG }}
